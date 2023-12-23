@@ -11,12 +11,20 @@ import sys
 import matplotlib.pyplot as plt
 import math
 
+class RMSELoss(torch.nn.Module):
+    def __init__(self):
+        super(RMSELoss, self).__init__()
+        self.mse = torch.nn.MSELoss()
+
+    def forward(self, x, y):
+        return torch.sqrt(self.mse(x, y))
+
 input_file = "ht1-input.wav"
 target_file = "ht1-target.wav"
 sample_size = 4410
 batch_size = 10
 learning_rate = 1e-3
-loss_function = torch.nn.MSELoss()
+loss_function = RMSELoss()
 
 def wav_read(filename, normalize=True):
     rate, signal = wavfile.read(filename)
@@ -53,18 +61,7 @@ def load_data():
     d["x_train"], d["x_valid"] = split(x)
     d["y_train"], d["y_valid"] = split(y)
 
-    return d 
-
-def pre_emphasis_filter(x, coeff=0.85):
-    return torch.cat((x[:, :, 0:1], x[:, :, 1:] - coeff * x[:, :, :-1]), dim=2)
-
-def ESRLoss(y, y_pred):
-    """
-    Error to signal ratio with pre-emphasis filter:
-    https://www.mdpi.com/2076-3417/10/3/766/htm
-    """
-    y, y_pred = pre_emphasis_filter(y), pre_emphasis_filter(y_pred)
-    return (y - y_pred).pow(2).sum(dim=2) / (y.pow(2).sum(dim=2) + 1e-10)
+    return d
 
 class Net(LightningModule):
     def __init__(self):
@@ -108,7 +105,6 @@ class Net(LightningModule):
     def training_step(self, batch, batch_idx):
         x, y = batch
         y_pred = self.forward(x)
-        # loss = ESRLoss(y[:, :, -y_pred.size(2) :], y_pred).mean()
         loss = loss_function(y[:, :, -y_pred.size(2) :], y_pred).mean()
         self.log('Train loss', loss, prog_bar=True)
         return loss
@@ -116,7 +112,6 @@ class Net(LightningModule):
     def validation_step(self, batch, batch_idx):
         x, y = batch
         y_pred = self.forward(x)
-        # loss = ESRLoss(y[:, :, -y_pred.size(2) :], y_pred).mean()
         loss = loss_function(y[:, :, -y_pred.size(2) :], y_pred).mean()
         self.log('Val loss', loss, prog_bar=True)
 
@@ -124,36 +119,36 @@ class Net(LightningModule):
         return self(batch)
     
 if __name__ == "__main__":
-    # model = Net()
-    # trainer = Trainer(
-    #     max_epochs=100
-    # )
-    # trainer.fit(model)
+    model = Net()
+    trainer = Trainer(
+        max_epochs=100
+    )
+    trainer.fit(model)
 
     # Use this to predict
-    model = Net.load_from_checkpoint('ht1.ckpt')
-    model.eval()
-    input_data = wav_read(input_file)
-    target_data = wav_read(target_file)
-    start_index = int(len(input_data) * 0.9)
-    input_data = input_data[start_index:]
-    target_data = target_data[start_index:]
-    input_len = len(input_data) - len(input_data) % sample_size
-    input_data = input_data[:input_len].reshape(-1, 1, sample_size)
-    target_data = target_data[:input_len]
-    x = torch.from_numpy(input_data).to("cuda:0")
-    pred = torch.empty_like(x)
-    for i in range(math.ceil(x.shape[0] / batch_size)):
-        x_batch = x[i*batch_size : (i+1)*batch_size, :, :]
-        with torch.no_grad():
-            pred_batch = model(x_batch)
-        pred[i*batch_size : (i+1)*batch_size, :, :] = pred_batch
-    pred = pred.permute(0, 2, 1)
-    pred = torch.flatten(pred).detach().cpu().numpy()
-    wav_write("pred.wav", pred)
-    wav_write("target.wav", target_data)
-    plt.figure(1)
-    plt.plot(target_data, label="target")
-    plt.plot(pred, label="pred")
-    plt.legend()
-    plt.show()
+    # model = Net.load_from_checkpoint('ht1.ckpt')
+    # model.eval()
+    # input_data = wav_read(input_file)
+    # target_data = wav_read(target_file)
+    # start_index = int(len(input_data) * 0.9)
+    # input_data = input_data[start_index:]
+    # target_data = target_data[start_index:]
+    # input_len = len(input_data) - len(input_data) % sample_size
+    # input_data = input_data[:input_len].reshape(-1, 1, sample_size)
+    # target_data = target_data[:input_len]
+    # x = torch.from_numpy(input_data).to("cuda:0")
+    # pred = torch.empty_like(x)
+    # for i in range(math.ceil(x.shape[0] / batch_size)):
+    #     x_batch = x[i*batch_size : (i+1)*batch_size, :, :]
+    #     with torch.no_grad():
+    #         pred_batch = model(x_batch)
+    #     pred[i*batch_size : (i+1)*batch_size, :, :] = pred_batch
+    # pred = pred.permute(0, 2, 1)
+    # pred = torch.flatten(pred).detach().cpu().numpy()
+    # wav_write("pred.wav", pred)
+    # wav_write("target.wav", target_data)
+    # plt.figure(1)
+    # plt.plot(target_data, label="target")
+    # plt.plot(pred, label="pred")
+    # plt.legend()
+    # plt.show()
