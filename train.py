@@ -10,6 +10,7 @@ from scipy.io import wavfile
 import sys
 import matplotlib.pyplot as plt
 import math
+import json
 
 class RMSELoss(torch.nn.Module):
     def __init__(self):
@@ -23,8 +24,11 @@ input_file = "ht1-input.wav"
 target_file = "ht1-target.wav"
 sample_size = 4410
 batch_size = 10
-learning_rate = 1e-3
+learning_rate = 0.004
 loss_function = RMSELoss()
+residual_channels = 16
+conv_layers = 8
+repeates = 3
 
 def wav_read(filename, normalize=True):
     rate, signal = wavfile.read(filename)
@@ -67,8 +71,8 @@ class Net(LightningModule):
     def __init__(self):
         super(Net, self).__init__()
         self.wavenet = WaveNet(
-            16, 8, 3,
-            kernel_size=2
+            residual_channels, conv_layers, repeates,
+            kernel_size=3
         )
 
     def prepare_data(self):
@@ -118,6 +122,49 @@ class Net(LightningModule):
     def predict_step(self, batch, batch_idx):
         return self(batch)
     
+def save_model(model):
+    data_out = {"type": "WaveNet",
+                "residual_channels": residual_channels,
+                "conv_layers": conv_layers,
+                "repeats": repeates, 
+                "variables": []}
+    wavenet = model.wavenet
+
+    for params in wavenet.input_conv.state_dict():
+        print(params, '\t', wavenet.input_conv.state_dict()[params].size())
+        data_out["variables"].append({"block": "input_conv",
+                                      "name": params,
+                                      "data": wavenet.input_conv.state_dict()[params].flatten().cpu().numpy().tolist()})
+        
+    for i in range(conv_layers):
+        conv_layer_out = {"block": "causal_conv." + str(i),
+                          "variables": []}
+        for params in wavenet.conv_layers[i].conv.state_dict():
+            print("causal_conv." + str(i) + ".conv.", params, '\t', wavenet.conv_layers[i].conv.state_dict()[params].size())
+            conv_layer_out["variables"].append({"layer": "conv",
+                                                "name": params,
+                                                "data": wavenet.conv_layers[i].conv.state_dict()[params].flatten().cpu().numpy().tolist()})
+        for params in wavenet.conv_layers[i].skip_conv.state_dict():
+            print("causal_conv." + str(i) + ".skip_conv.", params, '\t', wavenet.conv_layers[i].skip_conv.state_dict()[params].size())
+            conv_layer_out["variables"].append({"layer": "skip_conv",
+                                                "name": params,
+                                                "data": wavenet.conv_layers[i].skip_conv.state_dict()[params].flatten().cpu().numpy().tolist()})
+        for params in wavenet.conv_layers[i].out_conv.state_dict():
+            print("causal_conv." + str(i) + ".out_conv.", params, '\t', wavenet.conv_layers[i].out_conv.state_dict()[params].size())
+            conv_layer_out["variables"].append({"layer": "out_conv",
+                                                "name": params,
+                                                "data": wavenet.conv_layers[i].out_conv.state_dict()[params].flatten().cpu().numpy().tolist()})
+        data_out["variables"].append(conv_layer_out)
+
+    for params in wavenet.post_conv.state_dict():
+        print(params, '\t', wavenet.post_conv.state_dict()[params].size())
+        data_out["variables"].append({"block": "post_conv",
+                                      "name": params,
+                                      "data": wavenet.post_conv.state_dict()[params].flatten().cpu().numpy().tolist()})
+        
+    with open('converted_model.json', 'w') as outfile:
+        json.dump(data_out, outfile)
+    
 if __name__ == "__main__":
     model = Net()
     trainer = Trainer(
@@ -152,3 +199,5 @@ if __name__ == "__main__":
     # plt.plot(pred, label="pred")
     # plt.legend()
     # plt.show()
+
+    save_model(model)
