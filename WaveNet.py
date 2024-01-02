@@ -35,7 +35,7 @@ class CausalConv(nn.Module):
         return x, s
     
 class WaveNet(nn.Module):
-    def __init__(self, num_channels, num_layers, num_repeats, kernel_size=2):
+    def __init__(self, num_channels, num_layers, num_repeats, kernel_size=3):
         super(WaveNet, self).__init__()
         self.num_channels = num_channels
 
@@ -50,6 +50,7 @@ class WaveNet(nn.Module):
         self.post_conv = nn.Conv1d(num_channels * num_layers * num_repeats, 1, kernel_size=1)
 
     def forward(self, x):
+        x = x.permute(0, 2, 1)
         skips = []
         output = x
         output = self.input_conv(output)
@@ -62,4 +63,5 @@ class WaveNet(nn.Module):
 
         output = torch.cat([s[:, :, -output.size(2):] for s in skips], dim=1)
         output = self.post_conv(output)
+        output = output.permute(0, 2, 1)
         return output
