@@ -33,6 +33,8 @@ class RMSELoss(torch.nn.Module):
         self.mse = torch.nn.MSELoss()
 
     def forward(self, x, y):
+        x = x[:, 1:, :] - 0.85 * x[:, :-1, :]
+        y = y[:, 1:, :] - 0.85 * y[:, :-1, :]
         return torch.sqrt(self.mse(x, y))
     
 def train_epoch(model:WaveNet, dataset:FxDataset, loss_function, optimizer:torch.optim.Optimizer, up_fr=512):
@@ -109,9 +111,9 @@ if __name__ == "__main__":
 
     parser.add_argument("--sequence_length", type=int, default=4410)
     parser.add_argument("--batch_size", type=int, default=10)
-    parser.add_argument("--learning_rate", type=float, default=1e-3)
+    parser.add_argument("--learning_rate", type=float, default=3e-3)
 
-    parser.add_argument("--max_epochs", type=int, default=1500)
+    parser.add_argument("--max_epochs", type=int, default=150)
 
     parser.add_argument("--data", default="data.pickle")
     args = parser.parse_args()
